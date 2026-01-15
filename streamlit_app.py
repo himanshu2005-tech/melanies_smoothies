@@ -1,10 +1,10 @@
 # Import python packages
 import streamlit as st
-from snowflake.snowpark.context import get_active_session
 from snowflake.snowpark.functions import col, when_matched   # ← MERGE import added
 
 
-session = get_active_session()
+cnx = st.connection("snowflake")
+session = cnx.session()
 role = session.sql("SELECT CURRENT_ROLE()").collect()[0][0]
 
 st.write("🔎 Streamlit App is running under role:", role)
