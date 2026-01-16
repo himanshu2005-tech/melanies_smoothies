@@ -1,6 +1,6 @@
 # Import python packages
 import streamlit as st
-import pandas as pd            # NEW – Pandas for loc/iloc
+import pandas as pd
 from snowflake.snowpark.functions import col, when_matched
 import requests
 
@@ -14,7 +14,7 @@ role = session.sql("SELECT CURRENT_ROLE()").collect()[0][0]
 st.write("🔎 Streamlit App is running under role:", role)
 
 st.title("🥤 Customize Your Smoothie! 🥤")
-st.write("Choose your fruits and view nutrition information!")
+st.write("Choose your fruits and we'll fetch nutrition information!")
 
 # ----------------------------------
 # CUSTOMER ENTERS NAME
@@ -23,20 +23,13 @@ name_on_order = st.text_input("Name on smoothie:")
 st.write("The name on your smoothie will be:", name_on_order)
 
 # ----------------------------------
-# LOAD FRUITS (FRUIT_NAME + SEARCH_ON)
+# LOAD FRUIT OPTIONS
 # ----------------------------------
 my_dataframe = session.table("SMOOTHIES.PUBLIC.FRUIT_OPTIONS") \
     .select(col("FRUIT_NAME"), col("SEARCH_ON"))
 
-# Show Snowpark DF for debugging
-# st.dataframe(my_dataframe)
-
-# Convert Snowpark DF → Pandas DF
+# Convert Snowpark → Pandas so we can use LOC
 pd_df = my_dataframe.to_pandas()
-
-# Show Pandas DF for debugging
-# st.dataframe(pd_df)
-# st.stop()
 
 # ----------------------------------
 # USER SELECTS INGREDIENTS
@@ -48,7 +41,7 @@ ingredients_list = st.multiselect(
 )
 
 # ----------------------------------
-# SHOW NUTRITION + SEARCH_ON LOOKUP
+# NUTRITION LOOKUP USING SEARCH_ON
 # ----------------------------------
 if ingredients_list:
 
@@ -56,36 +49,34 @@ if ingredients_list:
 
     for fruit_chosen in ingredients_list:
 
-        # Build ingredient list string
+        # Build final string for order insert
         ingredients_string += fruit_chosen + " "
 
-        # ----------------------------------
-        # Find SEARCH_ON using Pandas LOC
-        # ----------------------------------
+        # Lookup the SEARCH_ON value
         search_on = pd_df.loc[
             pd_df["FRUIT_NAME"] == fruit_chosen, "SEARCH_ON"
         ].iloc[0]
 
-        # Debug line (should show correct mapping)
-        st.write("The search value for", fruit_chosen, "is", search_on, ".")
+        # Debug sentence (should look correct)
+        st.write(f"The search value for {fruit_chosen} is {search_on}.")
 
         # ----------------------------------
-        # CALL THE API USING SEARCH_ON
+        # API CALL USING SEARCH_ON VALUE
         # ----------------------------------
         st.subheader(fruit_chosen + " Nutrition Information")
 
-        fruityvice_response = requests.get(
-            "https://my.smoothiefroot.com/api/fruit/" + search_on
+        smoothiefroot_response = requests.get(
+            f"https://my.smoothiefroot.com/api/fruit/{search_on}"
         )
 
-        # Show the nutrition results
+        # Show nutrition response
         st.dataframe(
-            fruityvice_response.json(),
+            smoothiefroot_response.json(),
             use_container_width=True
         )
 
     # ----------------------------------
-    # INSERT ORDER
+    # INSERT ORDER INTO SNOWFLAKE
     # ----------------------------------
     insert_sql = f"""
         INSERT INTO SMOOTHIES.PUBLIC.ORDERS (INGREDIENTS, NAME_ON_ORDER)
