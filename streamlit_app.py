@@ -10,63 +10,77 @@ role = session.sql("SELECT CURRENT_ROLE()").collect()[0][0]
 
 st.write("🔎 Streamlit App is running under role:", role)
 
-st.title(":cup_with_straw: Customize Your Smoothie! :cup_with_straw:")
-st.write(
-    """
-    Select your ingredients and place your smoothie order!
-    """
-)
+st.title("🥤 Customize Your Smoothie! 🥤")
+st.write("Choose your ingredients and we’ll fetch nutrition info!")
 
-# Customer enters name
+# -------------------------
+# CUSTOMER ENTERS NAME
+# -------------------------
 name_on_order = st.text_input("Name on smoothie: ")
-st.write("The name on smoothie will be ", name_on_order)
+st.write("The name on your smoothie will be:", name_on_order)
 
-# Load fruit options
-fruit_df = session.table("SMOOTHIES.PUBLIC.FRUIT_OPTIONS").select(col('FRUIT_NAME'))
+# -------------------------
+# LOAD FRUIT OPTIONS
+# -------------------------
+my_dataframe = session.table("SMOOTHIES.PUBLIC.FRUIT_OPTIONS") \
+    .select(col("FRUIT_NAME"), col("SEARCH_ON"))
 
-# Select ingredients
+# Show the dataframe during debugging
+st.dataframe(my_dataframe, use_container_width=True)
+
+# TEMP STOP (like instructions show)
+# Remove this after testing!
+# st.stop()
+
+# -------------------------
+# SELECT FRUITS FOR SMOOTHIE
+# -------------------------
 ingredients_list = st.multiselect(
-    'Choose up to 5 ingredients:',
-    fruit_df,
+    "Choose up to 5 ingredients:",
+    my_dataframe["FRUIT_NAME"],
     max_selections=5
 )
 
-# -----------------------------------------------------
-#   INGREDIENTS + NUTRITION INFO (API CALL IN LOOP)
-# -----------------------------------------------------
+# -------------------------------------------
+# SHOW NUTRITION FOR EACH FRUIT SELECTED
+# -------------------------------------------
 if ingredients_list:
+
+    # Dictionary: Fruit Name → SEARCH_ON
+    fruit_lookup = dict(zip(my_dataframe["FRUIT_NAME"], my_dataframe["SEARCH_ON"]))
 
     ingredients_string = ""
 
     for fruit_chosen in ingredients_list:
+
+        search_term = fruit_lookup[fruit_chosen]  # <= correct mapping!
         ingredients_string += fruit_chosen + " "
 
-        # Show nutrition header
-        st.subheader(fruit_chosen + " Nutrition Information")
+        # Show title
+        st.subheader(f"{fruit_chosen} Nutrition Information")
 
         # API CALL
-        smoothiefroot_response = requests.get(
-            "https://my.smoothiefroot.com/api/fruit/" + fruit_chosen
+        response = requests.get(
+            "https://my.smoothiefroot.com/api/fruit/" + search_term
         )
 
-        # Show nutrition data
-        sf_df = st.dataframe(
-            data=smoothiefroot_response.json(),
-            use_container_width=True
-        )
+        # Display nutrition
+        st.dataframe(response.json(), use_container_width=True)
 
-    # Insert order SQL
-    my_insert_stmt = f"""
+    # ------------------------------------
+    # INSERT ORDER INTO SNOWFLAKE
+    # ------------------------------------
+    insert_sql = f"""
         INSERT INTO SMOOTHIES.PUBLIC.ORDERS (INGREDIENTS, NAME_ON_ORDER)
         VALUES ('{ingredients_string}', '{name_on_order}')
     """
 
-    if st.button('Submit Order'):
-        session.sql(my_insert_stmt).collect()
+    if st.button("Submit Order"):
+        session.sql(insert_sql).collect()
         st.success("Your Smoothie is ordered!", icon="✅")
 
 # ----------------------------
-#   PENDING ORDERS (EDITABLE)
+#   PENDING ORDERS SECTION
 # ----------------------------
 st.header("🧋 Pending Smoothie Orders!")
 st.write("Tick the checkbox to mark an order as filled.")
@@ -86,9 +100,6 @@ try:
 
     editable_df = st.data_editor(orders_df, key="orders_editor")
 
-    # ----------------------
-    # MERGE STATEMENT
-    # ----------------------
     if st.button("Submit"):
         og_dataset = session.table("SMOOTHIES.PUBLIC.ORDERS")
         edited_dataset = session.create_dataframe(editable_df)
