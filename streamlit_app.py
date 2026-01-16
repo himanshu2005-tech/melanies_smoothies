@@ -1,7 +1,7 @@
 # Import python packages
 import streamlit as st
-from snowflake.snowpark.functions import col, when_matched   # ← MERGE import added
-
+from snowflake.snowpark.functions import col, when_matched  
+import requests
 
 cnx = st.connection("snowflake")
 session = cnx.session()
@@ -36,7 +36,8 @@ ingredients_list = st.multiselect(
 # Insert order
 if ingredients_list:
     ingredients_string = " ".join(ingredients_list)
-
+    smoothiefroot_response = requests.get("https://my.smoothiefroot.com/api/fruit/watermelon")
+    sf_df = st.dataframe(data=smoothiefroot_response.json(), use_container_width=True)
     my_insert_stmt = f"""
         INSERT INTO SMOOTHIES.PUBLIC.ORDERS (INGREDIENTS, NAME_ON_ORDER)
         VALUES ('{ingredients_string}', '{name_on_order}')
@@ -93,8 +94,4 @@ except Exception as e:
     st.error("Orders table unavailable or insufficient privileges.", icon="❌")
     st.code(str(e))
 
-import requests
-smoothiefroot_response = requests.get("https://my.smoothiefroot.com/api/fruit/watermelon")
-#st.text(smoothiefroot_response.json())
-sf_df = st.dataframe(data=smoothiefroot_response.json(), use_container_width=True)
 
