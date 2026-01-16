@@ -1,9 +1,12 @@
 # Import python packages
 import streamlit as st
+import pandas as pd            # NEW – Pandas for loc/iloc
 from snowflake.snowpark.functions import col, when_matched
 import requests
 
-# Connect to Snowflake
+# ----------------------------------
+# CONNECT TO SNOWFLAKE
+# ----------------------------------
 cnx = st.connection("snowflake")
 session = cnx.session()
 role = session.sql("SELECT CURRENT_ROLE()").collect()[0][0]
@@ -11,65 +14,79 @@ role = session.sql("SELECT CURRENT_ROLE()").collect()[0][0]
 st.write("🔎 Streamlit App is running under role:", role)
 
 st.title("🥤 Customize Your Smoothie! 🥤")
-st.write("Choose your ingredients and we’ll fetch nutrition info!")
+st.write("Choose your fruits and view nutrition information!")
 
-# -------------------------
+# ----------------------------------
 # CUSTOMER ENTERS NAME
-# -------------------------
-name_on_order = st.text_input("Name on smoothie: ")
+# ----------------------------------
+name_on_order = st.text_input("Name on smoothie:")
 st.write("The name on your smoothie will be:", name_on_order)
 
-# -------------------------
-# LOAD FRUIT OPTIONS
-# -------------------------
+# ----------------------------------
+# LOAD FRUITS (FRUIT_NAME + SEARCH_ON)
+# ----------------------------------
 my_dataframe = session.table("SMOOTHIES.PUBLIC.FRUIT_OPTIONS") \
     .select(col("FRUIT_NAME"), col("SEARCH_ON"))
 
-# Show the dataframe during debugging
-st.dataframe(my_dataframe, use_container_width=True)
+# Show Snowpark DF for debugging
+# st.dataframe(my_dataframe)
 
-# TEMP STOP (like instructions show)
-# Remove this after testing!
+# Convert Snowpark DF → Pandas DF
+pd_df = my_dataframe.to_pandas()
+
+# Show Pandas DF for debugging
+# st.dataframe(pd_df)
 # st.stop()
 
-# -------------------------
-# SELECT FRUITS FOR SMOOTHIE
-# -------------------------
+# ----------------------------------
+# USER SELECTS INGREDIENTS
+# ----------------------------------
 ingredients_list = st.multiselect(
     "Choose up to 5 ingredients:",
-    my_dataframe["FRUIT_NAME"],
+    pd_df["FRUIT_NAME"],
     max_selections=5
 )
 
-# -------------------------------------------
-# SHOW NUTRITION FOR EACH FRUIT SELECTED
-# -------------------------------------------
+# ----------------------------------
+# SHOW NUTRITION + SEARCH_ON LOOKUP
+# ----------------------------------
 if ingredients_list:
-
-    # Dictionary: Fruit Name → SEARCH_ON
-    fruit_lookup = dict(zip(my_dataframe["FRUIT_NAME"], my_dataframe["SEARCH_ON"]))
 
     ingredients_string = ""
 
     for fruit_chosen in ingredients_list:
 
-        search_term = fruit_lookup[fruit_chosen]  # <= correct mapping!
+        # Build ingredient list string
         ingredients_string += fruit_chosen + " "
 
-        # Show title
-        st.subheader(f"{fruit_chosen} Nutrition Information")
+        # ----------------------------------
+        # Find SEARCH_ON using Pandas LOC
+        # ----------------------------------
+        search_on = pd_df.loc[
+            pd_df["FRUIT_NAME"] == fruit_chosen, "SEARCH_ON"
+        ].iloc[0]
 
-        # API CALL
-        response = requests.get(
-            "https://my.smoothiefroot.com/api/fruit/" + search_term
+        # Debug line (should show correct mapping)
+        st.write("The search value for", fruit_chosen, "is", search_on, ".")
+
+        # ----------------------------------
+        # CALL THE API USING SEARCH_ON
+        # ----------------------------------
+        st.subheader(fruit_chosen + " Nutrition Information")
+
+        fruityvice_response = requests.get(
+            "https://my.smoothiefroot.com/api/fruit/" + search_on
         )
 
-        # Display nutrition
-        st.dataframe(response.json(), use_container_width=True)
+        # Show the nutrition results
+        st.dataframe(
+            fruityvice_response.json(),
+            use_container_width=True
+        )
 
-    # ------------------------------------
-    # INSERT ORDER INTO SNOWFLAKE
-    # ------------------------------------
+    # ----------------------------------
+    # INSERT ORDER
+    # ----------------------------------
     insert_sql = f"""
         INSERT INTO SMOOTHIES.PUBLIC.ORDERS (INGREDIENTS, NAME_ON_ORDER)
         VALUES ('{ingredients_string}', '{name_on_order}')
@@ -79,9 +96,9 @@ if ingredients_list:
         session.sql(insert_sql).collect()
         st.success("Your Smoothie is ordered!", icon="✅")
 
-# ----------------------------
-#   PENDING ORDERS SECTION
-# ----------------------------
+# ----------------------------------
+# PENDING ORDERS (EDITABLE)
+# ----------------------------------
 st.header("🧋 Pending Smoothie Orders!")
 st.write("Tick the checkbox to mark an order as filled.")
 
@@ -100,6 +117,9 @@ try:
 
     editable_df = st.data_editor(orders_df, key="orders_editor")
 
+    # ----------------------------------
+    # MERGE TO UPDATE ORDER_FILLED
+    # ----------------------------------
     if st.button("Submit"):
         og_dataset = session.table("SMOOTHIES.PUBLIC.ORDERS")
         edited_dataset = session.create_dataframe(editable_df)
