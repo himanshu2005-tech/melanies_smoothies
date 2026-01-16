@@ -92,3 +92,8 @@ try:
 except Exception as e:
     st.error("Orders table unavailable or insufficient privileges.", icon="❌")
     st.code(str(e))
+
+import requests
+smoothiefroot_response = requests.get("https://my.smoothiefroot.com/api/fruit/watermelon")
+st.text(smoothiefroot_response)
+
