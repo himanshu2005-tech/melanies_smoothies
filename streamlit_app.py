@@ -16,6 +16,7 @@ session = cnx.session()
 
 
 my_dataframe = session.table("smoothies.public.fruit_options").select(col('FRUIT_NAME'))
+fruit_map = dict(zip(my_dataframe['FRUIT_NAME'], my_dataframe['SEARCH_ON']))
 #st.dataframe(data=my_dataframe, use_container_width=True)
 
 
@@ -32,9 +33,10 @@ if ingredients_list:
     ingredients_string = ''
 
     for fruit_chosen in ingredients_list:
+        search_value = fruit_map[fruit]
         ingredients_string += fruit_chosen + ' '
         st.subheader(fruit_chosen + 'Nutrition Information')
-        smoothiefroot_response = requests.get("https://my.smoothiefroot.com/api/fruit/" + fruit_chosen)
+        smoothiefroot_response = requests.get("https://my.smoothiefroot.com/api/fruit/" + search_value)
 
         #st.text(smoothiefroot_response.json())
         st_df = st.dataframe(data=smoothiefroot_response.json(), use_container_width=True)
